@@ -7,6 +7,24 @@ using System.Windows.Forms;
 
 namespace AutoClicker
 {
+    internal static class Theme
+    {
+        public static readonly Color Window = Color.FromArgb(8, 13, 24);
+        public static readonly Color HeaderA = Color.FromArgb(8, 14, 28);
+        public static readonly Color HeaderB = Color.FromArgb(13, 71, 76);
+        public static readonly Color Panel = Color.FromArgb(15, 23, 42);
+        public static readonly Color PanelSoft = Color.FromArgb(20, 31, 52);
+        public static readonly Color Border = Color.FromArgb(45, 212, 191);
+        public static readonly Color BorderSoft = Color.FromArgb(45, 61, 89);
+        public static readonly Color Text = Color.FromArgb(232, 246, 255);
+        public static readonly Color Muted = Color.FromArgb(145, 168, 190);
+        public static readonly Color Accent = Color.FromArgb(45, 212, 191);
+        public static readonly Color AccentDeep = Color.FromArgb(14, 165, 233);
+        public static readonly Color Danger = Color.FromArgb(244, 63, 94);
+        public static readonly Color Warning = Color.FromArgb(250, 204, 21);
+        public static readonly Color Input = Color.FromArgb(10, 18, 32);
+    }
+
     internal static class Native
     {
         public const int MOD_NOREPEAT = 0x4000;
@@ -129,9 +147,16 @@ namespace AutoClicker
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (LinearGradientBrush brush = new LinearGradientBrush(ClientRectangle, Color.FromArgb(15, 23, 42), Color.FromArgb(17, 94, 89), LinearGradientMode.Horizontal))
+            using (LinearGradientBrush brush = new LinearGradientBrush(ClientRectangle, Theme.HeaderA, Theme.HeaderB, LinearGradientMode.Horizontal))
+            using (Pen gridPen = new Pen(Color.FromArgb(18, Theme.Accent), 1F))
+            using (Pen glowPen = new Pen(Color.FromArgb(110, Theme.Accent), 2F))
             {
                 e.Graphics.FillRectangle(brush, ClientRectangle);
+                for (int x = 0; x < Width; x += 42)
+                {
+                    e.Graphics.DrawLine(gridPen, x, 0, x + 34, Height);
+                }
+                e.Graphics.DrawLine(glowPen, 24, Height - 2, Width - 24, Height - 2);
             }
 
             base.OnPaint(e);
@@ -142,7 +167,7 @@ namespace AutoClicker
     {
         public CardPanel()
         {
-            BackColor = Color.White;
+            BackColor = Theme.Panel;
             Padding = new Padding(18);
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
         }
@@ -150,9 +175,11 @@ namespace AutoClicker
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (SolidBrush shadow = new SolidBrush(Color.FromArgb(16, 15, 23, 42)))
+            using (SolidBrush shadow = new SolidBrush(Color.FromArgb(70, 0, 0, 0)))
             using (SolidBrush fill = new SolidBrush(BackColor))
-            using (Pen border = new Pen(Color.FromArgb(220, 226, 236)))
+            using (Pen border = new Pen(Theme.BorderSoft))
+            using (Pen accent = new Pen(Color.FromArgb(185, Theme.Border), 1.6F))
+            using (SolidBrush accentDot = new SolidBrush(Color.FromArgb(190, Theme.Accent)))
             {
                 Rectangle shadowRect = new Rectangle(4, 5, Width - 9, Height - 9);
                 Rectangle rect = new Rectangle(0, 0, Width - 8, Height - 8);
@@ -163,6 +190,9 @@ namespace AutoClicker
                     e.Graphics.FillPath(fill, path);
                     e.Graphics.DrawPath(border, path);
                 }
+
+                e.Graphics.DrawLine(accent, 20, 1, Width - 30, 1);
+                e.Graphics.FillEllipse(accentDot, 18, 18, 5, 5);
             }
 
             base.OnPaint(e);
@@ -230,8 +260,8 @@ namespace AutoClicker
         private readonly ComboBox macroFormatBox = new ComboBox();
         private readonly TextBox macroBox = new TextBox();
         private readonly NumericUpDown keyPauseBox = new NumericUpDown();
-        private readonly AccentButton startButton = new AccentButton(Color.FromArgb(20, 184, 166), Color.FromArgb(13, 148, 136));
-        private readonly AccentButton stopButton = new AccentButton(Color.FromArgb(244, 63, 94), Color.FromArgb(225, 29, 72));
+        private readonly AccentButton startButton = new AccentButton(Theme.AccentDeep, Color.FromArgb(2, 132, 199));
+        private readonly AccentButton stopButton = new AccentButton(Theme.Danger, Color.FromArgb(225, 29, 72));
         private readonly Label statusLabel = new Label();
         private readonly Panel statusDot = new Panel();
         private readonly System.Windows.Forms.Timer actionTimer = new System.Windows.Forms.Timer();
@@ -252,13 +282,14 @@ namespace AutoClicker
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            BackColor = Color.FromArgb(246, 248, 251);
+            BackColor = Theme.Window;
             Font = new Font("Segoe UI", 9F);
 
             BuildUi();
+            StyleInteractiveControls(this);
             WireEvents();
             SyncFromSpeed();
-            SetStatus("Ready", Color.FromArgb(20, 184, 166));
+            SetStatus("READY", Theme.Accent);
         }
 
         protected override void OnShown(EventArgs e)
@@ -307,7 +338,7 @@ namespace AutoClicker
             {
                 Text = "Auto Clicker Studio",
                 Font = new Font("Segoe UI", 22F, FontStyle.Bold),
-                ForeColor = Color.White,
+                ForeColor = Theme.Text,
                 AutoSize = true,
                 BackColor = Color.Transparent,
                 Location = new Point(24, 18)
@@ -318,7 +349,7 @@ namespace AutoClicker
             {
                 Text = "Repeat clicks, keyboard macros, cursor movement, and wheel input with one timing engine",
                 Font = new Font("Segoe UI", 9.5F),
-                ForeColor = Color.FromArgb(213, 245, 239),
+                ForeColor = Color.FromArgb(200, 240, 238),
                 AutoSize = true,
                 BackColor = Color.Transparent,
                 Location = new Point(28, 62)
@@ -329,7 +360,7 @@ namespace AutoClicker
             {
                 Text = "F6 toggle  |  F7 stop",
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(204, 251, 241),
+                ForeColor = Theme.Accent,
                 AutoSize = true,
                 BackColor = Color.Transparent,
                 Location = new Point(724, 44)
@@ -355,8 +386,8 @@ namespace AutoClicker
             automationCard.Controls.Add(speedTrack);
 
             speedValue.Text = "10.0 CPS";
-            speedValue.BackColor = Color.FromArgb(236, 253, 245);
-            speedValue.ForeColor = Color.FromArgb(15, 118, 110);
+            speedValue.BackColor = Color.FromArgb(16, 58, 66);
+            speedValue.ForeColor = Theme.Accent;
             speedValue.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
             speedValue.TextAlign = ContentAlignment.MiddleCenter;
             speedValue.Location = new Point(184, 82);
@@ -480,7 +511,7 @@ namespace AutoClicker
             Label pointerHint = new Label
             {
                 Text = "Positive X moves right. Positive Y moves down.",
-                ForeColor = Color.FromArgb(100, 116, 139),
+                ForeColor = Theme.Muted,
                 Font = new Font("Segoe UI", 8.5F),
                 AutoSize = false,
                 Location = new Point(20, 314),
@@ -526,7 +557,7 @@ namespace AutoClicker
 
             Panel footer = new Panel
             {
-                BackColor = Color.FromArgb(246, 248, 251),
+                BackColor = Theme.Window,
                 Location = new Point(20, 528),
                 Size = new Size(860, 74)
             };
@@ -542,14 +573,14 @@ namespace AutoClicker
             stopButton.Size = new Size(156, 42);
             footer.Controls.Add(stopButton);
 
-            statusDot.BackColor = Color.FromArgb(20, 184, 166);
+            statusDot.BackColor = Theme.Accent;
             statusDot.Location = new Point(630, 30);
             statusDot.Size = new Size(10, 10);
             footer.Controls.Add(statusDot);
 
             statusLabel.Text = "Ready";
             statusLabel.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            statusLabel.ForeColor = Color.FromArgb(51, 65, 85);
+            statusLabel.ForeColor = Theme.Text;
             statusLabel.AutoSize = false;
             statusLabel.Location = new Point(648, 22);
             statusLabel.Size = new Size(198, 26);
@@ -563,7 +594,7 @@ namespace AutoClicker
             {
                 Text = text,
                 Font = new Font("Segoe UI", 13F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(15, 23, 42),
+                ForeColor = Theme.Text,
                 AutoSize = true,
                 BackColor = Color.Transparent,
                 Location = new Point(x, y)
@@ -577,12 +608,56 @@ namespace AutoClicker
             {
                 Text = text,
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(100, 116, 139),
+                ForeColor = Theme.Muted,
                 AutoSize = true,
                 BackColor = Color.Transparent,
                 Location = new Point(x, y)
             };
             parent.Controls.Add(label);
+        }
+
+        private static void StyleInteractiveControls(Control parent)
+        {
+            foreach (Control control in parent.Controls)
+            {
+                if (control is ComboBox)
+                {
+                    ComboBox box = (ComboBox)control;
+                    box.BackColor = Theme.Input;
+                    box.ForeColor = Theme.Text;
+                    box.FlatStyle = FlatStyle.Flat;
+                }
+                else if (control is NumericUpDown)
+                {
+                    NumericUpDown number = (NumericUpDown)control;
+                    number.BackColor = Theme.Input;
+                    number.ForeColor = Theme.Text;
+                }
+                else if (control is TextBox)
+                {
+                    TextBox text = (TextBox)control;
+                    text.BackColor = Theme.Input;
+                    text.ForeColor = Theme.Text;
+                    text.BorderStyle = BorderStyle.FixedSingle;
+                }
+                else if (control is RadioButton)
+                {
+                    RadioButton radio = (RadioButton)control;
+                    radio.ForeColor = Theme.Text;
+                    radio.BackColor = Color.Transparent;
+                    radio.FlatStyle = FlatStyle.Flat;
+                }
+                else if (control is TrackBar)
+                {
+                    control.BackColor = Theme.Panel;
+                    control.ForeColor = Theme.Accent;
+                }
+
+                if (control.HasChildren)
+                {
+                    StyleInteractiveControls(control);
+                }
+            }
         }
 
         private void WireEvents()
@@ -714,7 +789,7 @@ namespace AutoClicker
 
             countingDown = true;
             startAt = DateTime.Now.AddMilliseconds((double)delayBox.Value * 1000);
-            SetStatus("Starting soon", Color.FromArgb(245, 158, 11));
+            SetStatus("ARMING", Theme.Warning);
             countdownTimer.Start();
         }
 
@@ -722,19 +797,19 @@ namespace AutoClicker
         {
             if (MacroRequired() && macroBox.Text.Length == 0)
             {
-                SetStatus("Add macro keys first", Color.FromArgb(244, 63, 94));
+                SetStatus("ADD MACRO KEYS", Theme.Danger);
                 return false;
             }
 
             if (MoveRequired() && moveXBox.Value == 0 && moveYBox.Value == 0)
             {
-                SetStatus("Set pointer movement", Color.FromArgb(244, 63, 94));
+                SetStatus("SET POINTER MOVE", Theme.Danger);
                 return false;
             }
 
             if (ScrollRequired() && verticalScrollBox.Value == 0 && horizontalScrollBox.Value == 0)
             {
-                SetStatus("Set scroll amount", Color.FromArgb(244, 63, 94));
+                SetStatus("SET SCROLL AMOUNT", Theme.Danger);
                 return false;
             }
 
@@ -748,7 +823,7 @@ namespace AutoClicker
             actionBusy = false;
             countdownTimer.Stop();
             actionTimer.Stop();
-            SetStatus("Ready", Color.FromArgb(20, 184, 166));
+            SetStatus("READY", Theme.Accent);
         }
 
         private void ToggleAction()
@@ -768,7 +843,7 @@ namespace AutoClicker
             double remaining = (startAt - DateTime.Now).TotalSeconds;
             if (remaining > 0)
             {
-                SetStatus(string.Format("Starting in {0:N1}s", remaining), Color.FromArgb(245, 158, 11));
+                SetStatus(string.Format("ARMING {0:N1}s", remaining), Theme.Warning);
                 return;
             }
 
@@ -776,7 +851,7 @@ namespace AutoClicker
             countingDown = false;
             running = true;
             actionTimer.Interval = (int)intervalBox.Value;
-            SetStatus("Running", Color.FromArgb(20, 184, 166));
+            SetStatus("RUNNING", Theme.Accent);
             RunActionCycle();
             actionTimer.Start();
         }
@@ -816,7 +891,7 @@ namespace AutoClicker
             catch
             {
                 StopAction();
-                SetStatus("Action failed", Color.FromArgb(244, 63, 94));
+                SetStatus("ACTION FAILED", Theme.Danger);
             }
             finally
             {

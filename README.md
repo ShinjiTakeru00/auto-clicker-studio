@@ -1,7 +1,8 @@
 # Auto Clicker Studio
 
-A small Windows automation panel with adjustable click speed, global hotkeys,
-keyboard macros, cursor movement, and vertical or horizontal scrolling.
+A compact futuristic Windows automation panel with adjustable click speed,
+global hotkeys, keyboard macros, cursor movement, and vertical or horizontal
+scrolling.
 
 ## Run on Windows
 
