@@ -14,10 +14,14 @@ namespace AutoClicker
         public const int VK_F7 = 0x76;
 
         private const int INPUT_MOUSE = 0;
+        private const int WHEEL_DELTA = 120;
+        private const uint MOUSEEVENTF_MOVE = 0x0001;
         private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
         private const uint MOUSEEVENTF_LEFTUP = 0x0004;
         private const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
         private const uint MOUSEEVENTF_RIGHTUP = 0x0010;
+        private const uint MOUSEEVENTF_WHEEL = 0x0800;
+        private const uint MOUSEEVENTF_HWHEEL = 0x1000;
 
         [StructLayout(LayoutKind.Sequential)]
         private struct INPUT
@@ -50,14 +54,87 @@ namespace AutoClicker
         {
             uint down = rightClick ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_LEFTDOWN;
             uint up = rightClick ? MOUSEEVENTF_RIGHTUP : MOUSEEVENTF_LEFTUP;
+            SendMouseInput(new MouseAction(0, 0, 0, down), new MouseAction(0, 0, 0, up));
+        }
 
-            INPUT[] inputs = new INPUT[2];
-            inputs[0].type = INPUT_MOUSE;
-            inputs[0].mi.dwFlags = down;
-            inputs[1].type = INPUT_MOUSE;
-            inputs[1].mi.dwFlags = up;
+        public static void MoveRelative(int dx, int dy)
+        {
+            if (dx == 0 && dy == 0)
+            {
+                return;
+            }
 
-            SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
+            SendMouseInput(new MouseAction(dx, dy, 0, MOUSEEVENTF_MOVE));
+        }
+
+        public static void ScrollVertical(int notches)
+        {
+            if (notches == 0)
+            {
+                return;
+            }
+
+            SendMouseInput(new MouseAction(0, 0, notches * WHEEL_DELTA, MOUSEEVENTF_WHEEL));
+        }
+
+        public static void ScrollHorizontal(int notches)
+        {
+            if (notches == 0)
+            {
+                return;
+            }
+
+            SendMouseInput(new MouseAction(0, 0, notches * WHEEL_DELTA, MOUSEEVENTF_HWHEEL));
+        }
+
+        private static void SendMouseInput(params MouseAction[] actions)
+        {
+            INPUT[] inputs = new INPUT[actions.Length];
+            for (int i = 0; i < actions.Length; i++)
+            {
+                inputs[i].type = INPUT_MOUSE;
+                inputs[i].mi.dx = actions[i].Dx;
+                inputs[i].mi.dy = actions[i].Dy;
+                inputs[i].mi.mouseData = unchecked((uint)actions[i].Data);
+                inputs[i].mi.dwFlags = actions[i].Flags;
+            }
+
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+        }
+
+        private struct MouseAction
+        {
+            public readonly int Dx;
+            public readonly int Dy;
+            public readonly int Data;
+            public readonly uint Flags;
+
+            public MouseAction(int dx, int dy, int data, uint flags)
+            {
+                Dx = dx;
+                Dy = dy;
+                Data = data;
+                Flags = flags;
+            }
+        }
+    }
+
+    internal sealed class HeaderPanel : Panel
+    {
+        public HeaderPanel()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (LinearGradientBrush brush = new LinearGradientBrush(ClientRectangle, Color.FromArgb(15, 23, 42), Color.FromArgb(17, 94, 89), LinearGradientMode.Horizontal))
+            {
+                e.Graphics.FillRectangle(brush, ClientRectangle);
+            }
+
+            base.OnPaint(e);
         }
     }
 
@@ -73,14 +150,14 @@ namespace AutoClicker
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (SolidBrush shadow = new SolidBrush(Color.FromArgb(18, 22, 27, 34)))
+            using (SolidBrush shadow = new SolidBrush(Color.FromArgb(16, 15, 23, 42)))
             using (SolidBrush fill = new SolidBrush(BackColor))
-            using (Pen border = new Pen(Color.FromArgb(226, 232, 240)))
+            using (Pen border = new Pen(Color.FromArgb(220, 226, 236)))
             {
-                Rectangle shadowRect = new Rectangle(3, 4, Width - 7, Height - 7);
-                Rectangle rect = new Rectangle(0, 0, Width - 7, Height - 7);
-                using (GraphicsPath shadowPath = RoundedRect(shadowRect, 12))
-                using (GraphicsPath path = RoundedRect(rect, 12))
+                Rectangle shadowRect = new Rectangle(4, 5, Width - 9, Height - 9);
+                Rectangle rect = new Rectangle(0, 0, Width - 8, Height - 8);
+                using (GraphicsPath shadowPath = RoundedRect(shadowRect, 14))
+                using (GraphicsPath path = RoundedRect(rect, 14))
                 {
                     e.Graphics.FillPath(shadow, shadowPath);
                     e.Graphics.FillPath(fill, path);
@@ -142,9 +219,14 @@ namespace AutoClicker
         private readonly Label speedValue = new Label();
         private readonly NumericUpDown intervalBox = new NumericUpDown();
         private readonly NumericUpDown delayBox = new NumericUpDown();
+        private readonly ComboBox actionModeBox = new ComboBox();
         private readonly RadioButton leftButton = new RadioButton();
         private readonly RadioButton rightButton = new RadioButton();
-        private readonly ComboBox actionModeBox = new ComboBox();
+        private readonly ComboBox movePresetBox = new ComboBox();
+        private readonly NumericUpDown moveXBox = new NumericUpDown();
+        private readonly NumericUpDown moveYBox = new NumericUpDown();
+        private readonly NumericUpDown verticalScrollBox = new NumericUpDown();
+        private readonly NumericUpDown horizontalScrollBox = new NumericUpDown();
         private readonly ComboBox macroFormatBox = new ComboBox();
         private readonly TextBox macroBox = new TextBox();
         private readonly NumericUpDown keyPauseBox = new NumericUpDown();
@@ -157,15 +239,16 @@ namespace AutoClicker
 
         private bool running;
         private bool countingDown;
-        private bool syncing;
+        private bool syncingSpeed;
+        private bool syncingPointer;
         private bool actionBusy;
         private DateTime startAt = DateTime.MinValue;
 
         public MainForm()
         {
             Text = "Auto Clicker Studio";
-            ClientSize = new Size(760, 520);
-            MinimumSize = new Size(760, 520);
+            ClientSize = new Size(900, 640);
+            MinimumSize = new Size(900, 640);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -213,31 +296,32 @@ namespace AutoClicker
 
         private void BuildUi()
         {
-            Panel header = new Panel
+            HeaderPanel header = new HeaderPanel
             {
-                BackColor = Color.FromArgb(30, 41, 59),
                 Location = new Point(0, 0),
-                Size = new Size(ClientSize.Width, 96)
+                Size = new Size(ClientSize.Width, 112)
             };
             Controls.Add(header);
 
             Label title = new Label
             {
                 Text = "Auto Clicker Studio",
-                Font = new Font("Segoe UI", 20F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 22F, FontStyle.Bold),
                 ForeColor = Color.White,
                 AutoSize = true,
+                BackColor = Color.Transparent,
                 Location = new Point(24, 18)
             };
             header.Controls.Add(title);
 
             Label subtitle = new Label
             {
-                Text = "Mouse clicks and keyboard macros with adjustable repeat speed",
+                Text = "Repeat clicks, keyboard macros, cursor movement, and wheel input with one timing engine",
                 Font = new Font("Segoe UI", 9.5F),
-                ForeColor = Color.FromArgb(203, 213, 225),
+                ForeColor = Color.FromArgb(213, 245, 239),
                 AutoSize = true,
-                Location = new Point(27, 57)
+                BackColor = Color.Transparent,
+                Location = new Point(28, 62)
             };
             header.Controls.Add(subtitle);
 
@@ -245,137 +329,221 @@ namespace AutoClicker
             {
                 Text = "F6 toggle  |  F7 stop",
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(153, 246, 228),
+                ForeColor = Color.FromArgb(204, 251, 241),
                 AutoSize = true,
-                Location = new Point(612, 38)
+                BackColor = Color.Transparent,
+                Location = new Point(724, 44)
             };
             header.Controls.Add(hotkeys);
 
-            CardPanel clickCard = new CardPanel
+            CardPanel automationCard = new CardPanel
             {
-                Location = new Point(20, 116),
-                Size = new Size(350, 302)
+                Location = new Point(20, 132),
+                Size = new Size(280, 372)
             };
-            Controls.Add(clickCard);
+            Controls.Add(automationCard);
 
-            AddSectionTitle(clickCard, "Click Settings", 18, 16);
-            AddMutedLabel(clickCard, "Repeat rate", 20, 58);
+            AddSectionTitle(automationCard, "Automation", 18, 16);
+            AddMutedLabel(automationCard, "Repeat rate", 20, 58);
 
             speedTrack.Minimum = 5;
             speedTrack.Maximum = 500;
             speedTrack.TickFrequency = 50;
             speedTrack.Value = 100;
             speedTrack.Location = new Point(18, 78);
-            speedTrack.Size = new Size(196, 45);
-            clickCard.Controls.Add(speedTrack);
+            speedTrack.Size = new Size(158, 45);
+            automationCard.Controls.Add(speedTrack);
 
             speedValue.Text = "10.0 CPS";
             speedValue.BackColor = Color.FromArgb(236, 253, 245);
             speedValue.ForeColor = Color.FromArgb(15, 118, 110);
             speedValue.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
             speedValue.TextAlign = ContentAlignment.MiddleCenter;
-            speedValue.Location = new Point(226, 82);
-            speedValue.Size = new Size(98, 28);
-            clickCard.Controls.Add(speedValue);
+            speedValue.Location = new Point(184, 82);
+            speedValue.Size = new Size(72, 28);
+            automationCard.Controls.Add(speedValue);
 
-            AddMutedLabel(clickCard, "Interval", 20, 130);
+            AddMutedLabel(automationCard, "Interval", 20, 130);
             intervalBox.Minimum = 20;
             intervalBox.Maximum = 5000;
             intervalBox.Value = 100;
             intervalBox.Increment = 10;
             intervalBox.Location = new Point(20, 152);
-            intervalBox.Size = new Size(130, 23);
-            clickCard.Controls.Add(intervalBox);
-            AddMutedLabel(clickCard, "ms per action", 20, 181);
+            intervalBox.Size = new Size(108, 23);
+            automationCard.Controls.Add(intervalBox);
+            AddMutedLabel(automationCard, "ms per cycle", 20, 181);
 
-            AddMutedLabel(clickCard, "Start delay", 188, 130);
+            AddMutedLabel(automationCard, "Start delay", 152, 130);
             delayBox.Minimum = 0;
             delayBox.Maximum = 30;
             delayBox.DecimalPlaces = 1;
             delayBox.Increment = 0.5M;
             delayBox.Value = 2;
-            delayBox.Location = new Point(190, 152);
-            delayBox.Size = new Size(130, 23);
-            clickCard.Controls.Add(delayBox);
-            AddMutedLabel(clickCard, "seconds before start", 190, 181);
+            delayBox.Location = new Point(154, 152);
+            delayBox.Size = new Size(100, 23);
+            automationCard.Controls.Add(delayBox);
+            AddMutedLabel(automationCard, "seconds", 154, 181);
 
-            AddMutedLabel(clickCard, "Mouse button", 20, 226);
+            AddMutedLabel(automationCard, "Action mode", 20, 218);
+            actionModeBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            actionModeBox.Items.AddRange(new object[]
+            {
+                "Click only",
+                "Keyboard macro",
+                "Pointer move",
+                "Scroll wheel",
+                "Click + macro",
+                "Full sequence"
+            });
+            actionModeBox.SelectedIndex = 0;
+            actionModeBox.Location = new Point(20, 240);
+            actionModeBox.Size = new Size(234, 23);
+            automationCard.Controls.Add(actionModeBox);
+
+            AddMutedLabel(automationCard, "Mouse button", 20, 292);
             leftButton.Text = "Left";
             leftButton.Checked = true;
             leftButton.AutoSize = true;
-            leftButton.Location = new Point(22, 250);
-            clickCard.Controls.Add(leftButton);
+            leftButton.Location = new Point(22, 316);
+            automationCard.Controls.Add(leftButton);
 
             rightButton.Text = "Right";
             rightButton.AutoSize = true;
-            rightButton.Location = new Point(90, 250);
-            clickCard.Controls.Add(rightButton);
+            rightButton.Location = new Point(92, 316);
+            automationCard.Controls.Add(rightButton);
+
+            CardPanel pointerCard = new CardPanel
+            {
+                Location = new Point(310, 132),
+                Size = new Size(280, 372)
+            };
+            Controls.Add(pointerCard);
+
+            AddSectionTitle(pointerCard, "Pointer Control", 18, 16);
+            AddMutedLabel(pointerCard, "Movement preset", 20, 58);
+            movePresetBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            movePresetBox.Items.AddRange(new object[]
+            {
+                "Custom X/Y",
+                "Move up",
+                "Move down",
+                "Move left",
+                "Move right",
+                "Move up-left",
+                "Move up-right",
+                "Move down-left",
+                "Move down-right"
+            });
+            movePresetBox.SelectedIndex = 4;
+            movePresetBox.Location = new Point(20, 80);
+            movePresetBox.Size = new Size(234, 23);
+            pointerCard.Controls.Add(movePresetBox);
+
+            AddMutedLabel(pointerCard, "Horizontal move", 20, 126);
+            moveXBox.Minimum = -1000;
+            moveXBox.Maximum = 1000;
+            moveXBox.Value = 20;
+            moveXBox.Increment = 5;
+            moveXBox.Location = new Point(20, 148);
+            moveXBox.Size = new Size(108, 23);
+            pointerCard.Controls.Add(moveXBox);
+            AddMutedLabel(pointerCard, "pixels", 20, 177);
+
+            AddMutedLabel(pointerCard, "Vertical move", 150, 126);
+            moveYBox.Minimum = -1000;
+            moveYBox.Maximum = 1000;
+            moveYBox.Value = 0;
+            moveYBox.Increment = 5;
+            moveYBox.Location = new Point(152, 148);
+            moveYBox.Size = new Size(102, 23);
+            pointerCard.Controls.Add(moveYBox);
+            AddMutedLabel(pointerCard, "pixels", 152, 177);
+
+            AddMutedLabel(pointerCard, "Vertical scroll", 20, 220);
+            verticalScrollBox.Minimum = -20;
+            verticalScrollBox.Maximum = 20;
+            verticalScrollBox.Value = -3;
+            verticalScrollBox.Location = new Point(20, 242);
+            verticalScrollBox.Size = new Size(108, 23);
+            pointerCard.Controls.Add(verticalScrollBox);
+            AddMutedLabel(pointerCard, "wheel notches", 20, 271);
+
+            AddMutedLabel(pointerCard, "Side scroll", 150, 220);
+            horizontalScrollBox.Minimum = -20;
+            horizontalScrollBox.Maximum = 20;
+            horizontalScrollBox.Value = 0;
+            horizontalScrollBox.Location = new Point(152, 242);
+            horizontalScrollBox.Size = new Size(102, 23);
+            pointerCard.Controls.Add(horizontalScrollBox);
+            AddMutedLabel(pointerCard, "left / right", 152, 271);
+
+            Label pointerHint = new Label
+            {
+                Text = "Positive X moves right. Positive Y moves down.",
+                ForeColor = Color.FromArgb(100, 116, 139),
+                Font = new Font("Segoe UI", 8.5F),
+                AutoSize = false,
+                Location = new Point(20, 314),
+                Size = new Size(232, 34)
+            };
+            pointerCard.Controls.Add(pointerHint);
 
             CardPanel macroCard = new CardPanel
             {
-                Location = new Point(390, 116),
-                Size = new Size(350, 302)
+                Location = new Point(600, 132),
+                Size = new Size(280, 372)
             };
             Controls.Add(macroCard);
 
             AddSectionTitle(macroCard, "Keyboard Macro", 18, 16);
-            AddMutedLabel(macroCard, "Action mode", 20, 58);
-
-            actionModeBox.DropDownStyle = ComboBoxStyle.DropDownList;
-            actionModeBox.Items.AddRange(new object[] { "Mouse click only", "Keyboard macro only", "Click then macro" });
-            actionModeBox.SelectedIndex = 0;
-            actionModeBox.Location = new Point(20, 80);
-            actionModeBox.Size = new Size(150, 23);
-            macroCard.Controls.Add(actionModeBox);
-
-            AddMutedLabel(macroCard, "Macro format", 190, 58);
+            AddMutedLabel(macroCard, "Macro format", 20, 58);
             macroFormatBox.DropDownStyle = ComboBoxStyle.DropDownList;
             macroFormatBox.Items.AddRange(new object[] { "Plain text", "SendKeys syntax" });
             macroFormatBox.SelectedIndex = 0;
-            macroFormatBox.Location = new Point(190, 80);
-            macroFormatBox.Size = new Size(130, 23);
+            macroFormatBox.Location = new Point(20, 80);
+            macroFormatBox.Size = new Size(234, 23);
             macroCard.Controls.Add(macroFormatBox);
 
-            AddMutedLabel(macroCard, "Keys to send", 20, 120);
+            AddMutedLabel(macroCard, "Keys to send", 20, 126);
             macroBox.Multiline = true;
             macroBox.ScrollBars = ScrollBars.Vertical;
             macroBox.AcceptsReturn = true;
             macroBox.AcceptsTab = true;
             macroBox.Text = "hello";
-            macroBox.Location = new Point(20, 142);
-            macroBox.Size = new Size(300, 72);
+            macroBox.Location = new Point(20, 148);
+            macroBox.Size = new Size(234, 116);
             macroCard.Controls.Add(macroBox);
 
-            AddMutedLabel(macroCard, "Character pause", 20, 232);
+            AddMutedLabel(macroCard, "Character pause", 20, 292);
             keyPauseBox.Minimum = 0;
             keyPauseBox.Maximum = 1000;
             keyPauseBox.Increment = 5;
             keyPauseBox.Value = 0;
-            keyPauseBox.Location = new Point(20, 254);
-            keyPauseBox.Size = new Size(84, 23);
+            keyPauseBox.Location = new Point(20, 314);
+            keyPauseBox.Size = new Size(92, 23);
             macroCard.Controls.Add(keyPauseBox);
-            AddMutedLabel(macroCard, "milliseconds", 114, 257);
+            AddMutedLabel(macroCard, "milliseconds", 124, 317);
 
             Panel footer = new Panel
             {
                 BackColor = Color.FromArgb(246, 248, 251),
-                Location = new Point(20, 438),
-                Size = new Size(720, 58)
+                Location = new Point(20, 528),
+                Size = new Size(860, 74)
             };
             Controls.Add(footer);
 
             startButton.Text = "Start";
-            startButton.Location = new Point(0, 10);
-            startButton.Size = new Size(150, 38);
+            startButton.Location = new Point(0, 14);
+            startButton.Size = new Size(156, 42);
             footer.Controls.Add(startButton);
 
             stopButton.Text = "Stop";
-            stopButton.Location = new Point(164, 10);
-            stopButton.Size = new Size(150, 38);
+            stopButton.Location = new Point(172, 14);
+            stopButton.Size = new Size(156, 42);
             footer.Controls.Add(stopButton);
 
             statusDot.BackColor = Color.FromArgb(20, 184, 166);
-            statusDot.Location = new Point(500, 24);
+            statusDot.Location = new Point(630, 30);
             statusDot.Size = new Size(10, 10);
             footer.Controls.Add(statusDot);
 
@@ -383,8 +551,8 @@ namespace AutoClicker
             statusLabel.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
             statusLabel.ForeColor = Color.FromArgb(51, 65, 85);
             statusLabel.AutoSize = false;
-            statusLabel.Location = new Point(518, 17);
-            statusLabel.Size = new Size(196, 24);
+            statusLabel.Location = new Point(648, 22);
+            statusLabel.Size = new Size(198, 26);
             statusLabel.TextAlign = ContentAlignment.MiddleLeft;
             footer.Controls.Add(statusLabel);
         }
@@ -421,23 +589,25 @@ namespace AutoClicker
         {
             speedTrack.ValueChanged += delegate { SyncFromSpeed(); };
             intervalBox.ValueChanged += delegate { SyncFromInterval(); };
+            movePresetBox.SelectedIndexChanged += delegate { ApplyMovePreset(); };
+            moveXBox.ValueChanged += delegate { MarkCustomMove(); };
+            moveYBox.ValueChanged += delegate { MarkCustomMove(); };
             startButton.Click += delegate { StartAction(); };
             stopButton.Click += delegate { StopAction(); };
 
             countdownTimer.Interval = 50;
             countdownTimer.Tick += CountdownTimerTick;
-
             actionTimer.Tick += delegate { RunActionCycle(); };
         }
 
         private void SyncFromSpeed()
         {
-            if (syncing)
+            if (syncingSpeed)
             {
                 return;
             }
 
-            syncing = true;
+            syncingSpeed = true;
             double cps = speedTrack.Value / 10.0;
             decimal interval = Math.Max(20, (decimal)Math.Round(1000 / cps));
             intervalBox.Value = interval;
@@ -446,17 +616,17 @@ namespace AutoClicker
             {
                 actionTimer.Interval = (int)interval;
             }
-            syncing = false;
+            syncingSpeed = false;
         }
 
         private void SyncFromInterval()
         {
-            if (syncing)
+            if (syncingSpeed)
             {
                 return;
             }
 
-            syncing = true;
+            syncingSpeed = true;
             double interval = (double)intervalBox.Value;
             double cps = 1000 / interval;
             int trackValue = Math.Min(500, Math.Max(5, (int)Math.Round(cps * 10)));
@@ -466,7 +636,68 @@ namespace AutoClicker
             {
                 actionTimer.Interval = (int)interval;
             }
-            syncing = false;
+            syncingSpeed = false;
+        }
+
+        private void ApplyMovePreset()
+        {
+            if (syncingPointer || movePresetBox.SelectedIndex <= 0)
+            {
+                return;
+            }
+
+            syncingPointer = true;
+            int step = 20;
+            int x = 0;
+            int y = 0;
+
+            switch (movePresetBox.SelectedIndex)
+            {
+                case 1:
+                    y = -step;
+                    break;
+                case 2:
+                    y = step;
+                    break;
+                case 3:
+                    x = -step;
+                    break;
+                case 4:
+                    x = step;
+                    break;
+                case 5:
+                    x = -step;
+                    y = -step;
+                    break;
+                case 6:
+                    x = step;
+                    y = -step;
+                    break;
+                case 7:
+                    x = -step;
+                    y = step;
+                    break;
+                case 8:
+                    x = step;
+                    y = step;
+                    break;
+            }
+
+            moveXBox.Value = x;
+            moveYBox.Value = y;
+            syncingPointer = false;
+        }
+
+        private void MarkCustomMove()
+        {
+            if (syncingPointer || movePresetBox.SelectedIndex == 0)
+            {
+                return;
+            }
+
+            syncingPointer = true;
+            movePresetBox.SelectedIndex = 0;
+            syncingPointer = false;
         }
 
         private void StartAction()
@@ -476,9 +707,8 @@ namespace AutoClicker
                 return;
             }
 
-            if (MacroRequired() && macroBox.Text.Length == 0)
+            if (!ValidateAction())
             {
-                SetStatus("Add macro keys first", Color.FromArgb(244, 63, 94));
                 return;
             }
 
@@ -486,6 +716,29 @@ namespace AutoClicker
             startAt = DateTime.Now.AddMilliseconds((double)delayBox.Value * 1000);
             SetStatus("Starting soon", Color.FromArgb(245, 158, 11));
             countdownTimer.Start();
+        }
+
+        private bool ValidateAction()
+        {
+            if (MacroRequired() && macroBox.Text.Length == 0)
+            {
+                SetStatus("Add macro keys first", Color.FromArgb(244, 63, 94));
+                return false;
+            }
+
+            if (MoveRequired() && moveXBox.Value == 0 && moveYBox.Value == 0)
+            {
+                SetStatus("Set pointer movement", Color.FromArgb(244, 63, 94));
+                return false;
+            }
+
+            if (ScrollRequired() && verticalScrollBox.Value == 0 && horizontalScrollBox.Value == 0)
+            {
+                SetStatus("Set scroll amount", Color.FromArgb(244, 63, 94));
+                return false;
+            }
+
+            return true;
         }
 
         private void StopAction()
@@ -539,12 +792,23 @@ namespace AutoClicker
             try
             {
                 int mode = actionModeBox.SelectedIndex;
-                if (mode == 0 || mode == 2)
+                if (mode == 0 || mode == 4 || mode == 5)
                 {
                     Native.Click(rightButton.Checked);
                 }
 
-                if (mode == 1 || mode == 2)
+                if (mode == 2 || mode == 5)
+                {
+                    Native.MoveRelative((int)moveXBox.Value, (int)moveYBox.Value);
+                }
+
+                if (mode == 3 || mode == 5)
+                {
+                    Native.ScrollVertical((int)verticalScrollBox.Value);
+                    Native.ScrollHorizontal((int)horizontalScrollBox.Value);
+                }
+
+                if (mode == 1 || mode == 4 || mode == 5)
                 {
                     SendMacro();
                 }
@@ -552,7 +816,7 @@ namespace AutoClicker
             catch
             {
                 StopAction();
-                SetStatus("Macro failed", Color.FromArgb(244, 63, 94));
+                SetStatus("Action failed", Color.FromArgb(244, 63, 94));
             }
             finally
             {
@@ -562,7 +826,20 @@ namespace AutoClicker
 
         private bool MacroRequired()
         {
-            return actionModeBox.SelectedIndex == 1 || actionModeBox.SelectedIndex == 2;
+            int mode = actionModeBox.SelectedIndex;
+            return mode == 1 || mode == 4 || mode == 5;
+        }
+
+        private bool MoveRequired()
+        {
+            int mode = actionModeBox.SelectedIndex;
+            return mode == 2;
+        }
+
+        private bool ScrollRequired()
+        {
+            int mode = actionModeBox.SelectedIndex;
+            return mode == 3;
         }
 
         private void SendMacro()
